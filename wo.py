@@ -1,10 +1,11 @@
 import numpy as np
+from scipy.stats.qmc import Halton
 from matplotlib import pyplot as plt
 
 
 def getTwoBest(costs):
     bestIdx = np.argmin(costs)
-    secondCost = float('inf')
+    secondCost = float('inf') 
     secondIdx = -1
     for i in range(len(costs)):
         if i != bestIdx and costs[i] < secondCost:
@@ -24,6 +25,8 @@ def wo(lu, iterMax, FOBJ, target):
     # Initialization
     walruses = LB + np.random.rand(nPop, D) * (UB - LB)
 
+    # Quasi-Monte Carlo method with Halton sequence
+    HS = Halton( d=D)
     # Fitness
     costs = np.array([FOBJ(w) for w in walruses])
 
@@ -66,7 +69,7 @@ def wo(lu, iterMax, FOBJ, target):
             ## Roosting
             if safeSig >= 0.5:              
                 # Male
-                for w in walruses[0: nPop * 0.45]:
+                walruses[: nPop * 0.45] = HS.random(nPop * 0.45)
 
                 # Female
                 for i in range(nPop * 0.45, nPop * 0.9):
