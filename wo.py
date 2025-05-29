@@ -39,15 +39,17 @@ def WO(lu, iterMax, FOBJ, target):
     HS = qmc.Halton(d=D)
     costs = np.array([FOBJ(w) for w in walruses])
 
+    # Results
     bestIdx, secondIdx = getTwoBest(costs)
     bestW = walruses[bestIdx].copy()
     secondW = walruses[secondIdx].copy()
     globalBest = costs[bestIdx]
     globalBestPerIter = np.empty(iterMax)
-    optimumIter = -1
-
     trueGlobalBest = globalBest
     trueGlobalBestParams = bestW.copy()
+    meanFitnessOfPop = np.zeros(iterMax)
+    decisions = np.zeros(iterMax)
+    optimumIter = -1
 
     for iter in range(iterMax):
         alpha = 1 - iter / iterMax
@@ -57,6 +59,7 @@ def WO(lu, iterMax, FOBJ, target):
         safeSig = np.random.rand()
 
         if abs(dangerSig) >= 1:
+            decisions[iter] = 1
             for i in range(nPop):
                 while True:
                     vig1, vig2 = np.random.randint(0, nPop, size=2)
@@ -69,6 +72,7 @@ def WO(lu, iterMax, FOBJ, target):
 
         else:
             if safeSig >= 0.5:
+                decisions[iter] = 2
                 walruses[: int(nPop * 0.45)] = qmc.scale(HS.random(int(nPop * 0.45)), LB, UB)
                 for i in range(int(nPop * 0.45), int(nPop * 0.9)):
                     walruses[i] = walruses[i] + alpha * (walruses[i - int(nPop * 0.45)] - walruses[i]) + (1 - alpha) * (bestW - walruses[i])
@@ -80,6 +84,7 @@ def WO(lu, iterMax, FOBJ, target):
                     walruses[i] = np.clip(walruses[i], LB, UB)
             else:
                 if abs(dangerSig) >= 0.5:
+                    decisions[iter] = 3
                     for i in range(nPop):
                         beta = 1 - 1 / (1 + np.exp((-(iter - (iterMax / 2)) / iterMax) * 10))
                         a1 = beta * np.random.rand() - beta
@@ -91,6 +96,7 @@ def WO(lu, iterMax, FOBJ, target):
                         walruses[i] = (x1 + x2) / 2
                         walruses[i] = np.clip(walruses[i], LB, UB)
                 else:
+                    decisions[iter] = 4
                     for i in range(nPop):
                         walruses[i] = walruses[i] * R - abs(bestW - walruses[i]) * (np.random.rand()**2) 
                         walruses[i] = np.clip(walruses[i], LB, UB)
@@ -106,34 +112,72 @@ def WO(lu, iterMax, FOBJ, target):
             trueGlobalBestParams = bestW.copy()
 
         globalBestPerIter[iter] = trueGlobalBest
+        meanFitnessOfPop[iter] = np.mean(costs)
 
         if globalBest <= target:
             optimumIter = iter
             globalBestPerIter[iter+1:] = trueGlobalBest
             break
 
-    return trueGlobalBest, trueGlobalBestParams, globalBestPerIter, optimumIter
+    return trueGlobalBest, trueGlobalBestParams, globalBestPerIter, optimumIter, meanFitnessOfPop, decisions
 
 
 def sphere(X):
     return np.sum(X**2)
 
 
+def schwefel_226(X):
+    return 418.9829 * len(X) - np.sum(X * np.sin(np.sqrt(np.abs(X))))
+
+
 if __name__ == "__main__":
-    D = 10
-    FOBJ = sphere
+    D = 6
+    FOBJ = schwefel_226
     lu = np.zeros((2, D))
-    lu[0, :] = -1
-    lu[1, :] = 1
-    iterMax = 2000
+    lu[0, :] = -500
+    lu[1, :] = 500
+    iterMax = 5000
     target = 0.0
-    for i in range(30):
-        globalBest, globalBestParams, globalBestPerIter, optimumIter = WO(lu, iterMax, FOBJ, target)
-        print(f"Global Best = {globalBest}\n")
+    
+    for i in range(1):
+        res = WO(lu, iterMax, FOBJ, target)
+        globalBest = res[0]
+        globalBestParams = res[1]
+        globalBestPerIter = res[2]
+        optimumIter = res[3] if res[3] != -1 else 5000
+        meanFitnessOfPop = res[4]  
+        decisions = res[5]
+
+        # Plot
+        fig = plt.figure()
+        manager = plt.get_current_fig_manager()
+        manager.window.state('zoomed')
+        
+        # Global Best
+        plt.subplot(1, 3, 1)
         plt.plot(globalBestPerIter)
         plt.xlabel("Iteration")
         plt.ylabel("Global Best")
+        plt.title(f"Global best = {globalBest} at iteration {optimumIter}")
         plt.grid(True)
-        plt.show(block=False)
-        plt.pause(2)
-        plt.close()
+
+        # Mean fitness
+        plt.subplot(1, 3, 2)
+        plt.plot(meanFitnessOfPop)
+        plt.xlabel("Iteration")
+        plt.ylabel("Mean Fitness Of The Population")
+
+        # Decisions
+        plt.subplot(1, 3, 3)
+        colors = ['black', 'red', 'yellow', 'green', 'purple']
+        labels = ['None', 'Migration', 'Roost', 'Gather', 'Flee']
+        for val in range(5):
+            mask = decisions == val
+            plt.scatter(np.where(mask)[0], decisions[mask], s=10, color=colors[val], label=labels[val])
+        plt.xlabel("Iteration")
+        plt.ylabel("Decision")
+        plt.title("Decision Over Iterations")
+        plt.grid(True)
+        plt.legend(loc='center left', bbox_to_anchor=(1.05, 0.5), fontsize='small')
+
+        plt.show()
